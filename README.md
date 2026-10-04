@@ -8,7 +8,7 @@ The GPT-4o tokenizer (`o200k_base`) reimplemented from zero — no `tiktoken` de
 - **`o200k_base.tiktoken`** — OpenAI's public merge ranks (the vocabulary *data*)
 - **`python/verify.py`** — differential test suite against real tiktoken
 
-Live playground: *(URL after deploy)*
+Live playground: https://tokenizer-from-scratch.pages.dev
 
 ## What's implemented
 
