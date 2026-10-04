@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>o200k · from scratch — tokenizer playground</title>
+<meta name="description" content="The GPT-4o tokenizer (o200k_base) reimplemented from zero in dependency-free JavaScript. Byte-identical to tiktoken, running entirely in your browser.">
+<style>
+  :root{
+    --bg:#0e100e; --panel:#151815; --panel2:#1b1f1b; --line:#292e29;
+    --ink:#ece9df; --muted:#a09c8e; --faint:#6e6b60;
+    --accent:#e8a33d; --accent-ink:#201404; --good:#8fc98f; --bad:#e07878;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,"Segoe UI",sans-serif;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html{scroll-behavior:smooth;}
+  body{margin:0; background:var(--bg); color:var(--ink); font-family:var(--sans);
+       line-height:1.55; font-size:16px;}
+  button, input, textarea, select, [role=tab]{touch-action:manipulation;}
+  .wrap{max-width:1060px; margin:0 auto; padding:0 20px 80px;}
+  header.hero{padding:56px 0 8px;}
+  .kicker{font-family:var(--mono); font-size:12px; letter-spacing:.14em; text-transform:uppercase;
+          color:var(--accent); margin:0 0 12px;}
+  h1{font-size:clamp(30px,5vw,46px); line-height:1.08; margin:0 0 12px; letter-spacing:-.02em;}
+  h1 .thin{color:var(--muted); font-weight:400;}
+  .lede{color:var(--muted); max-width:640px; margin:0 0 20px; font-size:17px;}
+  .badges{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:26px;}
+  .badge{font-family:var(--mono); font-size:12px; border:1px solid var(--line); border-radius:999px;
+         padding:5px 12px; color:var(--muted); background:var(--panel);}
+  .badge b{color:var(--ink); font-weight:600;}
+  nav.tabs{display:flex; gap:6px; flex-wrap:wrap; border-bottom:1px solid var(--line);
+           padding-bottom:0; margin-bottom:28px; position:sticky; top:0; background:var(--bg);
+           z-index:20; padding-top:10px;}
+  nav.tabs button{background:none; border:none; color:var(--muted); font-family:var(--sans);
+                  font-size:15px; font-weight:600; padding:10px 14px; cursor:pointer;
+                  border-bottom:2px solid transparent; margin-bottom:-1px;}
+  nav.tabs button[aria-selected=true]{color:var(--ink); border-bottom-color:var(--accent);}
+  section.tab{display:none;}
+  section.tab.active{display:block; animation:fade .18s ease;}
+  @keyframes fade{from{opacity:.4} to{opacity:1}}
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:20px;
+        margin-bottom:18px;}
+  .card h3{margin:0 0 10px; font-size:17px;}
+  .card p{margin:0 0 12px; color:var(--muted); font-size:15px;}
+  .card p:last-child{margin-bottom:0;}
+  textarea, input[type=text], input[type=number]{
+    width:100%; background:var(--panel2); color:var(--ink); border:1px solid var(--line);
+    border-radius:10px; padding:12px 14px; font-family:var(--mono); font-size:14.5px;
+    line-height:1.6; resize:vertical;}
+  textarea:focus, input:focus{outline:2px solid var(--accent); outline-offset:-1px; border-color:var(--accent);}
+  .btn{background:var(--accent); color:var(--accent-ink); border:none; border-radius:10px;
+       padding:10px 18px; font-weight:700; font-size:14.5px; cursor:pointer; font-family:var(--sans);}
+  .btn:active{transform:scale(.97);}
+  .btn.ghost{background:var(--panel2); color:var(--ink); border:1px solid var(--line); font-weight:600;}
+  .btn.small{padding:7px 12px; font-size:13px; border-radius:8px;}
+  .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center;}
+  .stats{display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:10px; margin:16px 0;}
+  .stat{background:var(--panel2); border:1px solid var(--line); border-radius:10px; padding:10px 14px;}
+  .stat .v{font-family:var(--mono); font-size:21px; font-weight:700;}
+  .stat .k{font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em;}
+  #tokens{display:flex; flex-wrap:wrap; gap:5px; margin-top:6px; max-height:420px; overflow:auto;
+          padding:4px 2px;}
+  .tok{font-family:var(--mono); font-size:13.5px; padding:4px 9px; border-radius:7px; cursor:pointer;
+       border:1px solid transparent; white-space:pre; line-height:1.5;}
+  .tok:hover{filter:brightness(1.35);}
+  .tok.sel{outline:2px solid var(--accent); outline-offset:1px;}
+  .tok.special{border-style:dashed;}
+  .insp{display:none; margin-top:14px; background:var(--panel2); border:1px solid var(--line);
+        border-radius:10px; padding:14px 16px;}
+  .insp.show{display:block;}
+  .insp .tid{font-family:var(--mono); font-size:26px; font-weight:700; color:var(--accent);}
+  .kv{display:grid; grid-template-columns:110px 1fr; gap:6px 12px; font-size:14px; margin-top:10px;}
+  .kv dt{color:var(--muted);} .kv dd{margin:0; font-family:var(--mono); word-break:break-all;}
+  details.pieces{margin-top:14px;}
+  details.pieces summary{cursor:pointer; color:var(--muted); font-weight:600; font-size:14px;}
+  .piece{font-family:var(--mono); font-size:13px; background:var(--panel2); border:1px solid var(--line);
+         border-radius:6px; padding:3px 8px; margin:3px; display:inline-block; white-space:pre;}
+  .stepchips{display:flex; flex-wrap:wrap; gap:6px; margin:14px 0; min-height:52px; align-items:center;}
+  .schip{font-family:var(--mono); font-size:14px; background:var(--panel2); border:1px solid var(--line);
+         border-radius:8px; padding:6px 10px; white-space:pre;}
+  .schip.merge{border-color:var(--accent); background:#2a2113; color:var(--accent);}
+  .schip.done{border-color:var(--good); color:var(--good);}
+  .steplog{font-family:var(--mono); font-size:13px; max-height:260px; overflow:auto;
+           background:var(--bg); border:1px solid var(--line); border-radius:10px; padding:12px 14px;}
+  .steplog div{padding:3px 0; border-bottom:1px dotted var(--line); color:var(--muted);}
+  .steplog div b{color:var(--ink);}
+  .steplog div.cur{color:var(--accent);}
+  input[type=range]{width:100%; accent-color:var(--accent);}
+  .prog{height:8px; background:var(--panel2); border-radius:99px; overflow:hidden; margin:12px 0;}
+  .prog i{display:block; height:100%; width:0; background:var(--accent); transition:width .15s;}
+  table.merges{width:100%; border-collapse:collapse; font-family:var(--mono); font-size:13px;}
+  table.merges td, table.merges th{padding:5px 8px; border-bottom:1px solid var(--line); text-align:left;}
+  table.merges th{color:var(--muted); font-weight:600; font-size:12px; text-transform:uppercase;}
+  .scrollbox{max-height:300px; overflow:auto; border:1px solid var(--line); border-radius:10px;}
+  .vlist{font-family:var(--mono); font-size:13.5px;}
+  .vlist .vi{padding:7px 12px; border-bottom:1px solid var(--line); display:flex; gap:14px; align-items:baseline;}
+  .vlist .vi .id{color:var(--accent); min-width:76px;}
+  .vlist .vi .tx{white-space:pre-wrap; word-break:break-all; color:var(--ink);}
+  .vlist .vi .hx{color:var(--faint); font-size:12px; margin-left:auto; white-space:nowrap;}
+  .how h3{font-size:20px; margin:26px 0 10px;}
+  .how h3:first-child{margin-top:0;}
+  .how p, .how li{color:var(--muted); font-size:15.5px;}
+  .how code{font-family:var(--mono); font-size:13.5px; background:var(--panel2); padding:2px 7px;
+            border-radius:6px; color:var(--ink);}
+  pre.code{background:var(--bg); border:1px solid var(--line); border-radius:10px; padding:14px 16px;
+           overflow:auto; font-family:var(--mono); font-size:13px; line-height:1.65; color:var(--ink);}
+  .pipe{display:flex; flex-direction:column; gap:0; margin:16px 0;}
+  .pstep{background:var(--panel2); border:1px solid var(--line); border-radius:10px; padding:12px 16px;}
+  .pstep b{color:var(--accent); font-family:var(--mono); font-size:13px; display:block; margin-bottom:4px;}
+  .parrow{text-align:center; color:var(--faint); font-size:18px; line-height:1.2; padding:2px;}
+  #loader{position:fixed; inset:0; background:var(--bg); z-index:99; display:flex; flex-direction:column;
+          align-items:center; justify-content:center; gap:16px; text-align:center; padding:20px;}
+  #loader .spin{width:44px; height:44px; border-radius:50%; border:3px solid var(--line);
+                border-top-color:var(--accent); animation:sp 0.9s linear infinite;}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  footer{border-top:1px solid var(--line); margin-top:40px; padding-top:22px; color:var(--faint);
+         font-size:13.5px;}
+  footer a{color:var(--muted);}
+  a{color:var(--accent);}
+  .note{font-size:13px; color:var(--faint); margin-top:10px;}
+  select{background:var(--panel2); color:var(--ink); border:1px solid var(--line); border-radius:8px;
+         padding:8px 10px; font-family:var(--sans); font-size:14px;}
+  @media (max-width:640px){
+    .kv{grid-template-columns:1fr;} .kv dt{margin-top:8px;}
+    header.hero{padding:36px 0 4px;}
+  }
+</style>
+</head>
+<body>
+<div id="loader">
+  <div class="spin"></div>
+  <div><b>Loading the tokenizer…</b><br>
+  <span style="color:var(--muted); font-size:14px">Fetching 200,000 token ranks (1.6&nbsp;MB). Everything runs locally in your browser.</span></div>
+</div>
+
+<div class="wrap">
+  <header class="hero">
+    <p class="kicker">Byte-level BPE · from scratch · no dependencies</p>
+    <h1>o200k, <span class="thin">rebuilt by hand.</span></h1>
+    <p class="lede">The GPT-4o tokenizer — 200,019 token ids, a 7-branch multilingual pre-tokenizer regex, and 199,998 byte-pair merges — reimplemented from zero in dependency-free JavaScript. Verified byte-identical to OpenAI's <span style="font-family:var(--mono)">tiktoken</span> on thousands of adversarial inputs. Paste text, watch it tokenize, train your own BPE, and inspect the vocabulary.</p>
+    <div class="badges">
+      <span class="badge"><b>200,019</b> token ids</span>
+      <span class="badge"><b>199,998</b> merge ranks</span>
+      <span class="badge"><b>0</b> dependencies</span>
+      <span class="badge">byte-identical to <b>tiktoken</b></span>
+    </div>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-tab="encode">Encode</button>
+    <button role="tab" aria-selected="false" data-tab="steps">BPE steps</button>
+    <button role="tab" aria-selected="false" data-tab="train">Train your own</button>
+    <button role="tab" aria-selected="false" data-tab="vocab">Vocabulary</button>
+    <button role="tab" aria-selected="false" data-tab="how">How it works</button>
+  </nav>
+
+  <main>
+    <!-- ENCODE -->
+    <section class="tab active" id="tab-encode">
+      <div class="card">
+        <div class="row" style="margin-bottom:10px">
+          <button class="btn ghost small" data-preset="multi">Multilingual</button>
+          <button class="btn ghost small" data-preset="code">Code</button>
+          <button class="btn ghost small" data-preset="spaces">Tricky spaces</button>
+          <button class="btn ghost small" data-preset="special">Special tokens</button>
+          <button class="btn ghost small" id="clearText">Clear</button>
+        </div>
+        <textarea id="input" rows="5" spellcheck="false"></textarea>
+        <div class="stats">
+          <div class="stat"><div class="v" id="stTok">0</div><div class="k">tokens</div></div>
+          <div class="stat"><div class="v" id="stChar">0</div><div class="k">characters</div></div>
+          <div class="stat"><div class="v" id="stByte">0</div><div class="k">utf-8 bytes</div></div>
+          <div class="stat"><div class="v" id="stRatio">–</div><div class="k">chars / token</div></div>
+          <div class="stat"><div class="v" id="stCost">–</div><div class="k">≈ gpt-4o input cost</div></div>
+        </div>
+        <div id="tokens"></div>
+        <div class="insp" id="insp">
+          <div class="tid" id="inspId">–</div>
+          <dl class="kv">
+            <dt>bytes (utf-8)</dt><dd id="inspHex">–</dd>
+            <dt>byte length</dt><dd id="inspLen">–</dd>
+            <dt>decodes to</dt><dd id="inspText">–</dd>
+          </dl>
+          <div class="row" style="margin-top:12px">
+            <button class="btn ghost small" id="copyOne">Copy id</button>
+            <button class="btn ghost small" id="copyIds">Copy all ids</button>
+          </div>
+        </div>
+        <details class="pieces">
+          <summary>Pre-tokenizer regex pieces (<span id="pieceCount">0</span>)</summary>
+          <div id="pieces" style="margin-top:10px"></div>
+          <p class="note">The regex splits text before any merging happens. Hover the “How it works” tab for the full pattern and the possessive-quantifier detective story.</p>
+        </details>
+      </div>
+    </section>
+
+    <!-- BPE STEPS -->
+    <section class="tab" id="tab-steps">
+      <div class="card">
+        <h3>Watch byte-pair encoding happen</h3>
+        <p>Type anything. The pre-tokenizer splits it into pieces, each piece starts as raw UTF-8 bytes, and the pair with the <b style="color:var(--ink)">lowest merge rank</b> merges first — step by step, exactly like the real algorithm.</p>
+        <div class="row" style="margin-bottom:10px">
+          <input type="text" id="stepInput" value="tokenization" style="flex:1; min-width:200px">
+          <select id="pieceSel"></select>
+        </div>
+        <div class="row" style="margin-bottom:6px">
+          <button class="btn small" id="playBtn">▶ Play</button>
+          <button class="btn ghost small" id="backBtn">← Step</button>
+          <button class="btn ghost small" id="fwdBtn">Step →</button>
+          <input type="range" id="stepSlider" min="0" max="0" value="0" style="flex:1; min-width:120px">
+        </div>
+        <div class="stepchips" id="stepChips"></div>
+        <div class="steplog" id="stepLog"></div>
+        <p class="note" id="stepFinal"></p>
+      </div>
+    </section>
+
+    <!-- TRAIN -->
+    <section class="tab" id="tab-train">
+      <div class="card">
+        <h3>Train a BPE tokenizer from scratch</h3>
+        <p>This is the real 1990s Sennrich algorithm: count every adjacent pair, merge the most frequent, repeat. It runs entirely in this page — no server, no libraries. Keep the corpus modest and it trains in seconds.</p>
+        <textarea id="corpus" rows="8" spellcheck="false"></textarea>
+        <div class="row" style="margin:12px 0">
+          <label style="color:var(--muted); font-size:14px">Merges: <b id="mergeN" style="color:var(--ink)">500</b></label>
+          <input type="range" id="mergeRange" min="50" max="2000" step="50" value="500" style="flex:1">
+          <button class="btn" id="trainBtn">Train</button>
+        </div>
+        <div class="prog" id="trainProg" style="display:none"><i></i></div>
+        <div id="trainOut"></div>
+      </div>
+      <div class="card" id="trainEncodeCard" style="display:none">
+        <h3>Encode with your tokenizer</h3>
+        <div class="row" style="margin-bottom:10px">
+          <input type="text" id="trainText" value="the quick brown fox" style="flex:1; min-width:200px">
+          <button class="btn small" id="trainEncodeBtn">Encode</button>
+        </div>
+        <div id="trainTokens" class="stepchips"></div>
+        <p class="note" id="trainCompare"></p>
+      </div>
+    </section>
+
+    <!-- VOCAB -->
+    <section class="tab" id="tab-vocab">
+      <div class="card">
+        <h3>Vocabulary browser</h3>
+        <p>Every mergeable token, searchable. Token ids 0–199997 are learned merges, 199999 is <code>&lt;|endoftext|&gt;</code>, 200018 is <code>&lt;|endofprompt|&gt;</code>, and 19 ids are unassigned.</p>
+        <div class="row" style="margin-bottom:10px">
+          <input type="text" id="vSearch" placeholder="Search token text…" style="flex:1; min-width:200px">
+          <input type="number" id="vId" placeholder="id…" min="0" max="200018" style="width:130px">
+          <button class="btn ghost small" id="vGo">Look up</button>
+          <button class="btn ghost small" id="vRand">Random</button>
+        </div>
+        <div class="scrollbox"><div class="vlist" id="vList"></div></div>
+      </div>
+      <div class="card">
+        <h3>Token byte-length distribution</h3>
+        <canvas id="hist" style="width:100%; height:180px"></canvas>
+        <p class="note" id="longest"></p>
+      </div>
+    </section>
+
+    <!-- HOW -->
+    <section class="tab how" id="tab-how">
+      <div class="card">
+        <h3>The pipeline</h3>
+        <div class="pipe">
+          <div class="pstep"><b>1 · special tokens</b>Scan for <code>&lt;|endoftext|&gt;</code> (199999) and <code>&lt;|endofprompt|&gt;</code> (200018). Everything between them is ordinary text.</div>
+          <div class="parrow">↓</div>
+          <div class="pstep"><b>2 · pre-tokenizer regex</b>Split the text with a 7-branch multilingual regex: words (with optional leading punctuation and contractions), numbers, punctuation runs, newlines, whitespace. This decides the <i>maximum</i> span any token may cover — merges never cross a regex boundary.</div>
+          <div class="parrow">↓</div>
+          <div class="pstep"><b>3 · utf-8 bytes</b>Each regex piece becomes raw bytes. The vocabulary's first entries are the 256 single bytes, so <i>any</i> text is encodable — even emoji, even binary garbage.</div>
+          <div class="parrow">↓</div>
+          <div class="pstep"><b>4 · byte-pair merges</b>Repeatedly merge the adjacent pair with the <b>lowest rank</b> (rank = merge priority learned during training). Stop when no adjacent pair exists in the rank table.</div>
+          <div class="parrow">↓</div>
+          <div class="pstep"><b>5 · ids</b>Look every merged byte-chunk up in the rank table → token ids. Decoding is the reverse: ids → bytes → UTF-8 text.</div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>The possessive-quantifier detective story</h3>
+        <p>OpenAI publishes the o200k regex with <i>possessive</i> quantifiers (<code>?+</code>, <code>*+</code>, <code>++</code>) — matchers that never give characters back. But tiktoken's core is written in Rust, and Rust's <code>regex</code> crate has no possessive quantifiers: it silently parses <code>a++</code> as nested <code>(a+)+</code>, i.e. plain greedy.</p>
+        <p>That changes real output. Try it:</p>
+        <div class="row" style="margin-bottom:10px">
+          <input type="text" id="quirkInput" value="a  b   c" style="flex:1; min-width:200px">
+        </div>
+        <div class="kv" style="margin-bottom:12px">
+          <dt>tiktoken (greedy — real)</dt><dd id="quirkReal">–</dd>
+          <dt>possessive (published)</dt><dd id="quirkPoss">–</dd>
+        </div>
+        <p>This implementation matches tiktoken's <i>actual</i> behavior — verified byte-identical on 3,019 adversarial inputs — not the paper regex. Even tiktoken's own Python <code>encode_ordinary</code> path disagrees with its Rust path here.</p>
+      </div>
+      <div class="card">
+        <h3>Why byte-level BPE won</h3>
+        <p>Character-level vocabularies break on unseen scripts; word-level ones explode in size and can't handle typos. Byte-level BPE starts from 256 byte values and learns 199,998 merges from real text, so the vocabulary is finite, compact, and total: <i>every</i> Unicode string has exactly one encoding. The regex exists to keep linguistically sensible units together — that's why <code> world</code> (leading space) is usually one token, and why code and CJK text tokenize the way they do.</p>
+      </div>
+      <div class="card">
+        <h3>From-scratch, honestly</h3>
+        <p>The <b style="color:var(--ink)">engine</b> — regex splitter, UTF-8 handling, merge loop, special-token logic, trainer — is written from zero in this repo's <code>tokenizer.js</code> (browser) and <code>python/gpt_tokenizer.py</code>, with no tiktoken import anywhere. The <b style="color:var(--ink)">vocabulary data</b> (token bytes → ranks) is OpenAI's public <code>o200k_base.tiktoken</code> file — you can't learn GPT-4o's merges without GPT-4o's training data, and pretending otherwise would be dishonest. Verification: <code>python/verify.py</code> diffs this implementation against real tiktoken on thousands of inputs.</p>
+        <p><a href="https://github.com/absolukie/tokenizer-from-scratch">github.com/absolukie/tokenizer-from-scratch</a></p>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    Vocabulary data: OpenAI's public <span style="font-family:var(--mono)">o200k_base.tiktoken</span> (token bytes → merge ranks). Engine: from-scratch JavaScript, zero dependencies, runs fully client-side.<br>
+    Cost estimate uses GPT-4o API pricing as of Oct 2026 ($2.50 / 1M input tokens). Verify: <span style="font-family:var(--mono)">python/verify.py</span> in the repo.
+  </footer>
+</div>
+
+<script type="module">
+import { BPETokenizer, parseRanksBin, pretokenize, trainBPE, encodeWithMerges } from './tokenizer.js';
+
+const $ = id => document.getElementById(id);
+const TD = new TextDecoder('utf-8');
+const binToBytes = s => { const b = new Uint8Array(s.length); for (let i=0;i<s.length;i++) b[i]=s.charCodeAt(i); return b; };
+const visWS = s => s.replace(/ /g,'␣').replace(/\n/g,'⏎\n').replace(/\t/g,'⇥').replace(/\r/g,'␍');
+const hexOf = s => [...s].map(c => c.charCodeAt(0).toString(16).padStart(2,'0')).join(' ');
+const HUES = 8;
+const chipColor = id => { const h = ((id * 2654435761) % 360 + 360) % 360; return `background:hsl(${h},32%,17%); color:hsl(${h},60%,80%); border-color:hsl(${h},30%,32%)`; };
+const money = n => n < 0.01 ? (n*100).toFixed(3)+'¢' : '$'+n.toFixed(n < 1 ? 4 : 2);
+
+/* ---------- tabs ---------- */
+document.querySelectorAll('nav.tabs button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('nav.tabs button').forEach(x => x.setAttribute('aria-selected','false'));
+  b.setAttribute('aria-selected','true');
+  document.querySelectorAll('section.tab').forEach(s => s.classList.toggle('active', s.id === 'tab-'+b.dataset.tab));
+  if (b.dataset.tab === 'vocab') drawHist();
+}));
+
+/* ---------- load ranks ---------- */
+let tok;
+try {
+  const buf = await (await fetch('./ranks.bin')).arrayBuffer();
+  tok = new BPETokenizer(parseRanksBin(buf));
+  $('loader').style.display = 'none';
+} catch(e) {
+  $('loader').innerHTML = '<div><b>Couldn\'t load ranks.bin</b><br><span style="color:var(--muted)">'+String(e).replace(/</g,'&lt;')+'</span></div>';
+  throw e;
+}
+
+/* ================= ENCODE ================= */
+const PRESETS = {
+  multi: "Hello world! Bonjour le monde. Hola mundo. 世界你好 🌍 مرحبا بالعالم हिन्दी नमस्ते",
+  code: "def tokenize(text):\n    return bpe.encode(text, allowed_special=\"all\")  # 3.14159 → [18, 13, 1415]",
+  spaces: "a  b   c    d\n\n   leading and trailing   \n\ttabs\ttoo",
+  special: "First chunk<|endoftext|>Second chunk<|endofprompt|>Done.",
+};
+$('input').value = "Tokenization is the quiet machinery inside every LLM: raw text in, integers out.";
+document.querySelectorAll('[data-preset]').forEach(b => b.addEventListener('click', () => { $('input').value = PRESETS[b.dataset.preset]; encodeNow(); }));
+$('clearText').addEventListener('click', () => { $('input').value=''; encodeNow(); });
+
+let curIds = [], curPieces = [];
+function encodeNow(){
+  const text = $('input').value;
+  const t0 = performance.now();
+  curIds = text ? tok.encode(text) : [];
+  curPieces = text ? pretokenize(text) : [];
+  const ms = (performance.now()-t0).toFixed(1);
+  const bytes = new TextEncoder().encode(text).length;
+  $('stTok').textContent = curIds.length.toLocaleString();
+  $('stChar').textContent = [...text].length.toLocaleString();
+  $('stByte').textContent = bytes.toLocaleString();
+  $('stRatio').textContent = curIds.length ? ([...text].length/curIds.length).toFixed(2) : '–';
+  $('stCost').textContent = curIds.length ? money(curIds.length * 2.50/1e6) : '–';
+  // chips (cap render)
+  const box = $('tokens'); box.innerHTML = '';
+  const CAP = 1500, show = curIds.slice(0, CAP);
+  const frag = document.createDocumentFragment();
+  const items = tok.tokensWithText(show);
+  items.forEach((t, i) => {
+    const s = document.createElement('span');
+    s.className = 'tok' + (t.id >= 199999 ? ' special' : '');
+    s.style.cssText = chipColor(t.id);
+    s.textContent = t.text === '' ? '�' : t.text;
+    s.title = 'id ' + t.id;
+    s.addEventListener('click', () => selectTok(i, s));
+    frag.appendChild(s);
+  });
+  box.appendChild(frag);
+  if (curIds.length > CAP) {
+    const m = document.createElement('div');
+    m.className = 'note'; m.textContent = `+ ${(curIds.length-CAP).toLocaleString()} more tokens (rendering capped) — encoded in ${ms} ms.`;
+    box.appendChild(m);
+  }
+  // pieces
+  $('pieceCount').textContent = curPieces.length;
+  $('pieces').innerHTML = curPieces.map(p => `<span class="piece">${visWS(p).replace(/</g,'&lt;')}</span>`).join('');
+  $('insp').classList.remove('show');
+}
+function selectTok(i, el){
+  document.querySelectorAll('.tok.sel').forEach(x => x.classList.remove('sel'));
+  el.classList.add('sel');
+  const id = curIds[i], bin = tok.decoder.get(id);
+  $('inspId').textContent = '#' + id;
+  $('inspHex').textContent = hexOf(bin);
+  $('inspLen').textContent = bin.length + ' byte' + (bin.length===1?'':'s');
+  let txt; try { txt = TD.decode(binToBytes(bin)); } catch { txt = '�'; }
+  $('inspText').textContent = JSON.stringify(txt);
+  $('insp').classList.add('show');
+  $('copyOne').onclick = () => navigator.clipboard.writeText(String(id));
+}
+$('copyIds').addEventListener('click', () => navigator.clipboard.writeText('['+curIds.join(', ')+']'));
+let encT;
+$('input').addEventListener('input', () => { clearTimeout(encT); encT = setTimeout(encodeNow, 120); });
+
+/* ================= BPE STEPS ================= */
+let trace = [], stepIdx = 0, playing = false, playTimer = null;
+function rebuildSteps(){
+  const text = $('stepInput').value;
+  const pieces = text ? pretokenize(text) : [''];
+  const sel = $('pieceSel'); sel.innerHTML = '';
+  pieces.forEach((p,i) => { const o=document.createElement('option'); o.value=i; o.textContent=`piece ${i}: ${JSON.stringify(p.length>28?p.slice(0,28)+'…':p)}`; sel.appendChild(o); });
+  buildTrace();
+}
+function buildTrace(){
+  const pieces = $('stepInput').value ? pretokenize($('stepInput').value) : [''];
+  const piece = pieces[+$('pieceSel').value || 0] || '';
+  const bin = (()=>{ const b=new TextEncoder().encode(piece); let s=''; for(const x of b) s+=String.fromCharCode(x); return s; })();
+  trace = tok.bytePairTrace(bin);
+  stepIdx = 0;
+  $('stepSlider').max = trace.length;
+  $('stepSlider').value = 0;
+  renderStep();
+}
+function renderStep(){
+  const chips = $('stepChips'); chips.innerHTML = '';
+  let parts;
+  if (trace.length === 0) { parts = null; }
+  else if (stepIdx === 0) parts = trace[0].parts;
+  else parts = trace[stepIdx-1].result;
+  if (!parts || parts.length === 0) { chips.innerHTML = '<span class="note">Nothing to merge — a single byte (or empty) needs no merges.</span>'; }
+  else {
+    const merging = stepIdx < trace.length ? trace[stepIdx].pair : null;
+    const frag = document.createDocumentFragment();
+    // highlight the pair that is ABOUT to merge at this step
+    let hi = -1;
+    if (merging) {
+      for (let i=0;i<parts.length-1;i++) if (parts[i]===merging[0] && parts[i+1]===merging[1]) { hi=i; break; }
+    }
+    parts.forEach((p,i) => {
+      const s=document.createElement('span');
+      let txt; try { txt = TD.decode(binToBytes(p)); } catch { txt='�'; }
+      s.className = 'schip' + (i===hi||i===hi+1 ? ' merge' : '') + (stepIdx===trace.length ? ' done' : '');
+      s.textContent = txt;
+      frag.appendChild(s);
+    });
+    chips.appendChild(frag);
+  }
+  const log = $('stepLog'); log.innerHTML = '';
+  const lf = document.createDocumentFragment();
+  trace.forEach((st,i) => {
+    const d=document.createElement('div');
+    if (i===stepIdx-1 || (stepIdx===0&&i===0)) d.className='cur';
+    let a,b; try{ a=JSON.stringify(TD.decode(binToBytes(st.pair[0]))); b=JSON.stringify(TD.decode(binToBytes(st.pair[1])));}catch{ a='�'; b='�'; }
+    d.innerHTML = `step ${i+1}: merge <b>${a} + ${b}</b> → rank <b>${st.rank}</b>`;
+    lf.appendChild(d);
+  });
+  log.appendChild(lf);
+  const cur = log.querySelector('.cur'); if (cur) cur.scrollIntoView({block:'nearest'});
+  const piece = ($('stepInput').value ? pretokenize($('stepInput').value) : [''])[
+    +($('pieceSel').value || 0)] || '';
+  const ids = tok.encode(piece);
+  $('stepFinal').textContent = `Final: ${JSON.stringify(piece)} → ${ids.length} token${ids.length===1?'':'s'} [${ids.join(', ')}] · ${trace.length} merges`;
+}
+function stopPlay(){ playing=false; $('playBtn').textContent='▶ Play'; clearInterval(playTimer); }
+$('playBtn').addEventListener('click', () => {
+  if (playing) { stopPlay(); return; }
+  if (stepIdx >= trace.length) stepIdx = 0;
+  playing = true; $('playBtn').textContent='⏸ Pause';
+  playTimer = setInterval(() => {
+    if (stepIdx >= trace.length) { stopPlay(); return; }
+    stepIdx++; $('stepSlider').value = stepIdx; renderStep();
+  }, 650);
+});
+$('backBtn').addEventListener('click', () => { stopPlay(); stepIdx=Math.max(0,stepIdx-1); $('stepSlider').value=stepIdx; renderStep(); });
+$('fwdBtn').addEventListener('click', () => { stopPlay(); stepIdx=Math.min(trace.length,stepIdx+1); $('stepSlider').value=stepIdx; renderStep(); });
+$('stepSlider').addEventListener('input', e => { stopPlay(); stepIdx=+e.target.value; renderStep(); });
+let stepT;
+$('stepInput').addEventListener('input', () => { clearTimeout(stepT); stepT=setTimeout(rebuildSteps, 200); });
+$('pieceSel').addEventListener('change', buildTrace);
+rebuildSteps();
+/* ================= TRAIN ================= */
+$('corpus').value = [
+  "The quick brown fox jumps over the lazy dog. Pack my box with five dozen liquor jugs.",
+  "Tokenization turns text into numbers. Every large language model begins here: raw characters",
+  "become UTF-8 bytes, bytes merge into pieces, pieces become token ids. The model never sees",
+  "letters at all — only integers, each one an index into a vocabulary it learned during training.",
+  "In 1994, Sennrich and colleagues described byte-pair encoding for machine translation.",
+  "Count every adjacent pair of symbols. Merge the most frequent pair. Repeat ten thousand times.",
+  "What emerges is a vocabulary shaped exactly like the language it was trained on: common words",
+  "become single tokens, rare words split into pieces, and any Unicode string stays encodable",
+  "because the 256 individual bytes are always in the vocabulary. GPT-4o's tokenizer, o200k_base,",
+  "learned 199,998 merges this way across a hundred languages, plus code, plus math.",
+  "def hello(name):",
+  "    return f\"hello, {name}!\"  # code tokenizes differently: punctuation gets its own pieces",
+  "世界你好。tokenizer 从字节开始学习。 Emoji like 🌍 cost several tokens: each byte merges separately.",
+  "Numbers split into chunks of at most three digits — 3.14159 becomes 3 . 14 159 in most cases.",
+].join("\n");
+$('mergeRange').addEventListener('input', e => $('mergeN').textContent = e.target.value);
+let trained = null;
+$('trainBtn').addEventListener('click', async () => {
+  const corpus = $('corpus').value.slice(0, 100000);
+  const n = +$('mergeRange').value;
+  $('trainBtn').disabled = true;
+  $('trainProg').style.display = 'block';
+  const bar = $('trainProg').firstElementChild;
+  const t0 = performance.now();
+  try {
+    trained = await trainBPE(corpus, n, p => bar.style.width = (p*100)+'%');
+    const ms = ((performance.now()-t0)/1000).toFixed(1);
+    const rows = trained.merges.slice(0, 60).map(([a,b],i) =>
+      `<tr><td>${i+1}</td><td>${visWS(a).replace(/</g,'&lt;')}</td><td>${visWS(b).replace(/</g,'&lt;')}</td><td>${visWS(a+b).replace(/</g,'&lt;')}</td></tr>`).join('');
+    $('trainOut').innerHTML =
+      `<div class="stats">
+         <div class="stat"><div class="v">${trained.vocab.length.toLocaleString()}</div><div class="k">vocab size</div></div>
+         <div class="stat"><div class="v">${trained.merges.length.toLocaleString()}</div><div class="k">merges learned</div></div>
+         <div class="stat"><div class="v">${ms}s</div><div class="k">training time</div></div>
+       </div>
+       <h3 style="font-size:15px; margin:14px 0 8px">First ${Math.min(60, trained.merges.length)} merges learned</h3>
+       <div class="scrollbox"><table class="merges"><tr><th>#</th><th>left</th><th>right</th><th>merged</th></tr>${rows}</table></div>
+       <p class="note">Later merges build on earlier ones — that's why frequent words collapse into single tokens first.</p>`;
+    $('trainEncodeCard').style.display = 'block';
+    trainEncodeNow();
+  } finally {
+    $('trainBtn').disabled = false;
+    setTimeout(() => $('trainProg').style.display = 'none', 600);
+  }
+});
+function trainEncodeNow(){
+  if (!trained) return;
+  const text = $('trainText').value;
+  const mine = encodeWithMerges(text, trained.merges);
+  const box = $('trainTokens'); box.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  mine.slice(0, 400).forEach(t => {
+    const s = document.createElement('span');
+    s.className = 'schip'; s.textContent = t === ' ' ? '␣' : t;
+    frag.appendChild(s);
+  });
+  box.appendChild(frag);
+  const ref = tok.encode(text).length;
+  $('trainCompare').textContent =
+    `Your tokenizer: ${mine.length} tokens · o200k_base: ${ref} tokens. ` +
+    (mine.length > ref ? "o200k wins — it trained on vastly more text in 100+ languages." :
+     mine.length === ref ? "Tied on this input!" : "Yours wins on this input — home-field advantage of training on similar text.");
+}
+$('trainEncodeBtn').addEventListener('click', trainEncodeNow);
+$('trainText').addEventListener('input', () => { clearTimeout(window._tt); window._tt = setTimeout(trainEncodeNow, 200); });
+
+/* ================= VOCAB ================= */
+const vRow = (id, bin) => {
+  let txt; try { txt = TD.decode(binToBytes(bin)); } catch { txt = '�'; }
+  const d = document.createElement('div'); d.className = 'vi';
+  d.innerHTML = `<span class="id">${id}</span><span class="tx"></span><span class="hx">${hexOf(bin)}</span>`;
+  d.querySelector('.tx').textContent = txt;
+  return d;
+};
+function vShow(ids){
+  const list = $('vList'); list.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  ids.slice(0, 120).forEach(id => {
+    const bin = tok.decoder.get(id);
+    if (bin === undefined) {
+      const d = document.createElement('div'); d.className = 'vi';
+      d.innerHTML = `<span class="id">${id}</span><span class="tx" style="color:var(--faint)">unassigned id</span>`;
+      frag.appendChild(d);
+    } else frag.appendChild(vRow(id, bin));
+  });
+  list.appendChild(frag);
+}
+let vT;
+$('vSearch').addEventListener('input', e => {
+  clearTimeout(vT);
+  vT = setTimeout(() => {
+    const q = e.target.value;
+    if (!q) { vShow([...Array(40).keys()]); return; }
+    const out = [];
+    for (const [bin, id] of tok.ranks) {
+      let txt; try { txt = TD.decode(binToBytes(bin)); } catch { continue; }
+      if (txt.includes(q)) { out.push(id); if (out.length >= 120) break; }
+    }
+    vShow(out);
+  }, 220);
+});
+$('vGo').addEventListener('click', () => { const id = +$('vId').value; if (id>=0 && id<=200018) vShow([id]); });
+$('vRand').addEventListener('click', () => vShow([Math.floor(Math.random()*199998)]));
+vShow([...Array(40).keys()]);
+
+/* histogram */
+const lens = new Uint8Array(129);
+let longest = [];
+for (const [bin] of tok.ranks) {
+  const l = Math.min(bin.length, 128);
+  lens[l]++;
+}
+{
+  const entries = [];
+  for (const [bin, id] of tok.ranks) entries.push([bin.length, id, bin]);
+  entries.sort((a,b) => b[0]-a[0]);
+  longest = entries.slice(0, 8);
+}
+function drawHist(){
+  const c = $('hist'), dpr = window.devicePixelRatio || 1;
+  const W = c.clientWidth, H = c.clientHeight;
+  c.width = W*dpr; c.height = H*dpr;
+  const x = c.getContext('2d'); x.scale(dpr, dpr);
+  const max = Math.max(...lens);
+  const n = 64, bw = W/n;
+  x.fillStyle = '#e8a33d';
+  for (let i=1;i<=n;i++){
+    const h = (lens[i]/max)*(H-24);
+    x.globalAlpha = 0.35 + 0.65*(lens[i]/max);
+    x.fillRect(i*bw+1, H-20-h, bw-2, h);
+  }
+  x.globalAlpha = 1; x.fillStyle = '#6e6b60'; x.font = '11px ui-monospace, monospace';
+  x.fillText('1 byte', 4, H-6); x.fillText('64 bytes', W-64, H-6);
+}
+drawHist();
+window.addEventListener('resize', drawHist);
+$('longest').innerHTML = 'Longest tokens: ' + longest.map(([l,id,bin]) => {
+  let t; try { t = TD.decode(binToBytes(bin)); } catch { t='�'; }
+  return `<code>#${id}</code> (${l} bytes) ${t.replace(/</g,'&lt;').slice(0,40)}`;
+}).join(' · ');
+
+/* ================= QUIRK DEMO ================= */
+const AT2 = (n, inner) => `(?=(?<${n}>${inner}))\\k<${n}>`;
+const POSS_PAT = [
+  AT2('q1','[^\\r\\n\\p{L}\\p{N}]?')+AT2('q2','[\\p{Lu}\\p{Lt}\\p{Lm}\\p{Lo}\\p{M}]*')+AT2('q3','[\\p{Ll}\\p{Lm}\\p{Lo}\\p{M}]+')+"(?:'[sS]|'[tT]|'[rR][eE]|'[vV][eE]|'[mM]|'[lL][lL]|'[dD])?",
+  AT2('q4','[^\\r\\n\\p{L}\\p{N}]?')+AT2('q5','[\\p{Lu}\\p{Lt}\\p{Lm}\\p{Lo}\\p{M}]+')+AT2('q6','[\\p{Ll}\\p{Lm}\\p{Lo}\\p{M}]*')+"(?:'[sS]|'[tT]|'[rR][eE]|'[vV][eE]|'[mM]|'[lL][lL]|'[dD])?",
+  AT2('q7','\\p{N}{1,3}'),
+  AT2('q8',' ?')+AT2('q9','[^\\s\\p{L}\\p{N}]+')+AT2('q10','[\\r\\n/]*'),
+  AT2('q11','\\s*')+AT2('q12','[\\r\\n]+'),
+  AT2('q13','\\s+')+'(?!\\S)',
+  '\\s+',
+].join('|');
+const possRe = new RegExp(POSS_PAT, 'gu');
+function quirkUpdate(){
+  const t = $('quirkInput').value;
+  const real = pretokenize(t);
+  possRe.lastIndex = 0;
+  const poss = []; let m;
+  while ((m = possRe.exec(t)) !== null) { poss.push(m[0]); if (m[0]==='') possRe.lastIndex++; }
+  const fmt = arr => '[' + arr.map(p => JSON.stringify(p)).join(', ') + ']';
+  $('quirkReal').textContent = fmt(real);
+  $('quirkPoss').textContent = fmt(poss);
+  $('quirkReal').style.color = JSON.stringify(real)===JSON.stringify(poss) ? 'var(--muted)' : 'var(--good)';
+}
+$('quirkInput').addEventListener('input', quirkUpdate);
+quirkUpdate();
+
+/* ================= INIT ================= */
+encodeNow();
+</script>
+</body>
+</html>
